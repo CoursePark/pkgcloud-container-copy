@@ -1,0 +1,36 @@
+{
+  "name": "pkgcloud-file-copy",
+  "version": "0.0.1",
+  "description": "Copy files or directories to or from cloud providers using the pkgcloud library",
+  "keywords": [
+    "Cloud",
+    "Copy",
+    "Upload",
+    "Download",
+    "File",
+    "Directory",
+    "Container",
+    "pkgcloud",
+    "Amazon",
+    "Azure",
+    "HP",
+    "Openstack",
+    "Rackspace"
+  ],
+  "license": "Talk to the legal department or ask me and I'll get this sorted",
+  "main": "",
+  "scripts": {
+    "test": "jasmine-node spec"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:CoursePark/pkgcloud-file-copy.git"
+  },
+  "dependencies": {
+    "q": "1.0.1"
+  },
+  "devDependencies": {
+    "jasmine-node": "1.14.5"
+  },
+  "author": "Bluedrop Peformance Learning"
+}
