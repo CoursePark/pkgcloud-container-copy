@@ -1,4 +1,4 @@
-pkgcloudContainerCopy = require('../lib/index.js');
+pkgcloudContainerCopy = require('../pkgcloudContainerCopy.js');
 remoteConfig = require('./remote-config.json');
 path = require('path');
 
