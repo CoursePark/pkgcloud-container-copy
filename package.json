@@ -1,18 +1,17 @@
 {
-  "name": "pkgcloud-file-copy",
+  "name": "pkgcloud-container-copy",
   "version": "0.0.1",
   "description": "Copy files or directories to or from cloud providers using the pkgcloud library",
   "keywords": [
     "Cloud",
     "Copy",
+    "Mirror",
     "Upload",
     "Download",
     "File",
     "Directory",
     "Container",
     "pkgcloud",
-    "Amazon",
-    "Azure",
     "HP",
     "Openstack",
     "Rackspace"
@@ -24,10 +23,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git@github.com:CoursePark/pkgcloud-file-copy.git"
+    "url": "git@github.com:CoursePark/pkgcloud-container-copy.git"
   },
   "dependencies": {
-    "q": "1.0.1"
+    "pkgcloud": "0.9.6",
+    "when": "3.4.6",
+    "MD5": "1.2.1"
   },
   "devDependencies": {
     "jasmine-node": "1.14.5"

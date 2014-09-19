@@ -1,0 +1,20 @@
+{
+	"a": {
+		"client": {
+			"provider": "rackspace",
+			"username": "username",
+			"apiKey": "0123456789abcdef0123456789abcdef",
+			"region": "DFW"
+		},
+		"container": "name-of-container-a"
+	},
+	"b": {
+		"client": {
+			"provider": "rackspace",
+			"username": "username",
+			"apiKey": "0123456789abcdef0123456789abcdef",
+			"region": "DFW"
+		},
+		"container": "name-of-container-b"
+	}
+}
