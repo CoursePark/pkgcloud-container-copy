@@ -8,48 +8,58 @@ var md5 = require('MD5');
 var pkgcloudContainerCopy = {};
 
 pkgcloudContainerCopy.copyContainer = function (source, destination) {
-	var sourceFileList = pkgcloudContainerCopy.getFileList(source);
-	var destinationFileList = pkgcloudContainerCopy.getFileList(source);
-	
-	var plan = pkgcloudContainerCopy.transferPlan(sourceFileList, destinationFileList);
-	
-	// created
-	for (var i = 0; i < plan.created; i++) {
-		file = plan.created[i];
+	when.all([
+		pkgcloudContainerCopy.getFileList(source),
+		pkgcloudContainerCopy.getFileList(destination)
+	])
+	.then(function (valueList) {
+		var sourceFileList = valueList[0];
+		var destinationFileList = valueList[1];
 		
-		var destinationStream = pkgcloudContainerCopy.getDestinationStream(destination, file);
-		var sourceStream = pkgcloudContainerCopy.getSourceStream(source, file);
-		sourceStream.pipe(destinationStream);
-		destination.on('finish', function () {
-			console.log('created: ' + file);
-		});
-	}
-	
-	// modified
-	for (var i = 0; i < plan.modified; i++) {
-		file = plan.modified[i];
+		var plan = pkgcloudContainerCopy.transferPlan(sourceFileList, destinationFileList);
+		console.log(plan);
 		
-		var destinationStream = pkgcloudContainerCopy.getDestinationStream(destination, file);
-		var sourceStream = pkgcloudContainerCopy.getSourceStream(source, file);
-		sourceStream.pipe(destinationStream);
-		destination.on('finish', function () {
-			console.log('modified: ' + file);
+		// created
+		for (var i = 0; i < plan.created.length; i++) {
+			file = plan.created[i];
+			
+			var destinationStream = pkgcloudContainerCopy.getDestinationStream(destination, file);
+			var sourceStream = pkgcloudContainerCopy.getSourceStream(source, file);
+			sourceStream.pipe(destinationStream);
+			destinationStream.on('finish', function () {
+				console.log('created: ' + file);
+			});
+		}
+		
+		// modified
+		for (var i = 0; i < plan.modified.length; i++) {
+			file = plan.modified[i];
+			
+			var destinationStream = pkgcloudContainerCopy.getDestinationStream(destination, file);
+			var sourceStream = pkgcloudContainerCopy.getSourceStream(source, file);
+			sourceStream.pipe(destinationStream);
+			destinationStream.on('finish', function () {
+				console.log('modified: ' + file);
+			});
+		}
+		
+		// touched
+		for (var i = 0; i < plan.touched.length; i++) {
+			file = plan.touched[i];
+			// can't yet set dates on files in pkgcloud storage
+		}
+		
+		// deleted
+		plan.deleted.forEach(function (file) {
+			pkgcloudContainerCopy.deleteFile(destination, file)
+				.then(function () {
+					console.log('deleted: ' + file);
+				})
+			;
 		});
-	}
-	
-	// touched
-	for (var i = 0; i < plan.touched; i++) {
-		file = plan.touched[i];
-		// can't yet set dates on files in pkgcloud storage
-	}
-	
-	// deleted
-	plan.deleted.forEach(function (file) {
-		pkgcloudContainerCopy.deleteFile(destination, file)
-			.then(function () {
-				console.log('deleted: ' + file);
-			})
-		;
+	})
+	.catch(function (err) {
+		console.log(err);
 	});
 };
 
@@ -75,7 +85,14 @@ pkgcloudContainerCopy.getSourceStream = function (containerSpecifer, file) {
 		// pkgcloud storage container
 		var client = containerSpecifer.client;
 		var container = containerSpecifer.container;
-		return client.download({container: container, remote: file});
+		return client.download({container: container, remote: file}, function (err, file) {
+			if (err) {
+				console.log('source stream err');
+				console.log(err);
+			}
+			console.log('source stream file');
+			console.log(file);
+		});
 	}
 };
 
@@ -87,19 +104,26 @@ pkgcloudContainerCopy.getDestinationStream = function (containerSpecifer, file) 
 		// pkgcloud storage container
 		var client = containerSpecifer.client;
 		var container = containerSpecifer.container;
-		return client.upload({container: container, remote: file});
+		return client.upload({container: container, remote: file}, function (err, file) {
+			if (err) {
+				console.log('source stream err');
+				console.log(err);
+			}
+			console.log('source stream file');
+			console.log(file);
+		});
 	}
 };
 
 pkgcloudContainerCopy.deleteFile = function (containerSpecifer, file) {
 	if (typeof containerSpecifer === 'string') {
 		// path on local file system
-		return nodefn.lift(fs.unlink)(path.resolve(containerSpecifer, file));
+		return nodefn.lift(fs.unlink).bind(fs)(path.resolve(containerSpecifer, file));
 	} else {
 		// pkgcloud storage container
 		var client = containerSpecifer.client;
 		var container = containerSpecifer.container;
-		return nodefn.lift(client.removeFile)(container, file);
+		return nodefn.lift(client.removeFile).bind(client)(container, file);
 	}
 };
 
@@ -167,10 +191,10 @@ pkgcloudContainerCopy.readdirRecurse = function (dir) {
 	var baseDir = path.resolve(dir);
 	
 	var _readdirRecurse = function (dir) {
-		var p = nodefn.lift(fs.readdir)(dir);
+		var p = nodefn.lift(fs.readdir).bind(fs)(dir);
 		p = when.map(p, function (filename) {
 			var file = dir + path.sep + filename;
-			return nodefn.lift(fs.stat)(file).then(function (stat) {
+			return nodefn.lift(fs.stat).bind(fs)(file).then(function (stat) {
 				if (stat.isDirectory()) {
 					return _readdirRecurse(file);
 				}
@@ -202,7 +226,17 @@ pkgcloudContainerCopy.getFileList = function (containerSpecifer) {
 		var client = containerSpecifer.client;
 		var container = containerSpecifer.container;
 		
-		return nodefn.lift(client.getFiles)(container);
+		var p = nodefn.lift(client.getFiles).bind(client)(container);
+		
+		p = when.map(p, function (fileModel) {
+			return {
+				name: fileModel.name,
+				lastModified: fileModel.lastModified,
+				size: fileModel.size
+			}
+		});
+		
+		return p;
 	}
 };
 
