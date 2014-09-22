@@ -1,6 +1,4 @@
 node_modules
 example/remote-config.json
 example/temp/a
-!example/temp/a/.gitignore
 example/temp/b
-!example/temp/b/.gitignore
