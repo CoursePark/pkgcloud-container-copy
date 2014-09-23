@@ -1,6 +1,6 @@
 {
   "name": "pkgcloud-container-copy",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Copy files or directories to or from cloud providers using the pkgcloud library",
   "keywords": [
     "Cloud",
@@ -17,10 +17,7 @@
     "Rackspace"
   ],
   "license": "Talk to the legal department or ask me and I'll get this sorted",
-  "main": "",
-  "scripts": {
-    "test": "jasmine-node spec"
-  },
+  "main": "pkgcloudContainerCopy.js",
   "repository": {
     "type": "git",
     "url": "git@github.com:CoursePark/pkgcloud-container-copy.git"
