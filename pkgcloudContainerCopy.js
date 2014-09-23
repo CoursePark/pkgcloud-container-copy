@@ -18,7 +18,7 @@ pkgcloudContainerCopy.copyContainer = function (source, destination) {
 		var sourceFileList = valueList[0];
 		var destinationFileList = valueList[1];
 		
-		var plan = pkgcloudContainerCopy.transferPlan(sourceFileList, destinationFileList);
+		var plan = pkgcloudContainerCopy.getTransferPlan(sourceFileList, destinationFileList);
 		
 		var i, file, sourceStream, destinationStream;
 		
@@ -27,9 +27,48 @@ pkgcloudContainerCopy.copyContainer = function (source, destination) {
 			destinationStream = pkgcloudContainerCopy.getDestinationStream(destination, file);
 			sourceStream = pkgcloudContainerCopy.getSourceStream(source, file);
 			sourceStream.pipe(destinationStream);
-			destinationStream.on('finish', function () {
-				console.log('created:', file);
+			
+			sourceStream.on('end', function () {
+				process.stdout.write('created: ' + file + '\n');
 			});
+			// finish not firing on uploads
+			// destinationStream.on('finish', function () {
+			// 	process.stdout.write('created: ' + file + '\n');
+			// });
+			
+			/* attempting to debug the remote-to-remote example not working
+			sourceStream.on('readable', function () {
+				console.log('readable');
+			});
+			sourceStream.on('data', function () {
+				console.log('data');
+			});
+			sourceStream.on('close', function () {
+				console.log('close');
+			});
+			sourceStream.on('end', function () {
+				console.log('end');
+			});
+			sourceStream.on('error', function (err) {
+				console.log('error', err);
+			});
+			
+			destinationStream.on('finish', function () {
+				console.log('finish');
+			});
+			destinationStream.on('error', function (err) {
+				console.log('error', err);
+			});
+			destinationStream.on('pipe', function () {
+				console.log('pipe');
+			});
+			destinationStream.on('drain', function () {
+				console.log('drain');
+			});
+			destinationStream.on('unpipe', function () {
+				console.log('unpipe');
+			});
+			 */
 		});
 		
 		// modified
@@ -37,9 +76,13 @@ pkgcloudContainerCopy.copyContainer = function (source, destination) {
 			destinationStream = pkgcloudContainerCopy.getDestinationStream(destination, file);
 			sourceStream = pkgcloudContainerCopy.getSourceStream(source, file);
 			sourceStream.pipe(destinationStream);
-			destinationStream.on('finish', function () {
-				console.log('modified: ' + file);
+			sourceStream.on('end', function () {
+				process.stdout.write('modified: ' + file + '\n');
 			});
+			// finish not firing on uploads
+			// destinationStream.on('finish', function () {
+			// 	process.stdout.write('modified: ' + file + '\n');
+			// });
 		});
 		
 		// touched
@@ -49,11 +92,9 @@ pkgcloudContainerCopy.copyContainer = function (source, destination) {
 		
 		// deleted
 		plan.deleted.forEach(function (file) {
-			pkgcloudContainerCopy.deleteFile(destination, file)
-				.then(function () {
-					console.log('deleted: ' + file);
-				})
-			;
+			pkgcloudContainerCopy.deleteFile(destination, file).then(function () {
+				process.stdout.write('deleted: ' + file + '\n');
+			});
 		});
 	})
 	.catch(function (err) {
@@ -67,7 +108,14 @@ pkgcloudContainerCopy.createCloudContainerSpecifer = function (clientOption, con
 		clientOption = clientOption.client;
 	}
 	
-	var client = pkgcloud.storage.createClient(clientOption);
+	var client;
+	
+	if (clientOption.download === undefined) {
+		client = pkgcloud.storage.createClient(clientOption);
+	} else {
+		// looks like it might be an existing client that is be suggested, use that
+		client = clientOption;
+	}
 	
 	return {
 		client: client,
@@ -78,19 +126,18 @@ pkgcloudContainerCopy.createCloudContainerSpecifer = function (clientOption, con
 pkgcloudContainerCopy.getSourceStream = function (containerSpecifer, file) {
 	if (typeof containerSpecifer === 'string') {
 		// path on local file system
-		return fs.createReadStream(path.resolve(file));
+		return fs.createReadStream(path.resolve(containerSpecifer, file));
 	} else {
 		// pkgcloud storage container
 		var client = containerSpecifer.client;
 		var container = containerSpecifer.container;
-		var stream = client.download({container: container, remote: file}, function (err, fileModel) {
+		return client.download({container: container, remote: file}, function (err) {
 			if (err) {
-				console.log('source callback err');
+				process.stdout.write('source callback err' + '\n');
 				console.log(err);
+				return;
 			}
 		});
-		
-		return stream;
 	}
 };
 
@@ -111,10 +158,11 @@ pkgcloudContainerCopy.getDestinationStream = function (containerSpecifer, file) 
 		// pkgcloud storage container
 		var client = containerSpecifer.client;
 		var container = containerSpecifer.container;
-		return client.upload({container: container, remote: file}, function (err, fileModel) {
+		return client.upload({container: container, remote: file}, function (err, result) {
 			if (err) {
-				console.log('destination callback err');
+				process.stdout.write('destination callback err' + '\n');
 				console.log(err);
+				return;
 			}
 		});
 	}
@@ -139,7 +187,7 @@ pkgcloudContainerCopy.sortByName = function (x, y) {
 	return x.name > y.name ? 1 : -1;
 };
 
-pkgcloudContainerCopy.transferPlan = function (sourceFileList, destinationFileList) {
+pkgcloudContainerCopy.getTransferPlan = function (sourceFileList, destinationFileList) {
 	var plan = {
 		created: [],
 		modified: [],
@@ -151,7 +199,8 @@ pkgcloudContainerCopy.transferPlan = function (sourceFileList, destinationFileLi
 	sourceFileList = sourceFileList.sort(pkgcloudContainerCopy.sortByName);
 	destinationFileList = destinationFileList.sort(pkgcloudContainerCopy.sortByName);
 	
-	for (var sPos = 0, dPos = 0; sPos < sourceFileList.length || dPos < destinationFileList;) {
+	for (var sPos = 0, dPos = 0; sPos < sourceFileList.length || dPos < destinationFileList.length;) {
+		
 		if (dPos === destinationFileList.length) {
 			plan.created.push(sourceFileList[sPos].name);
 			sPos++;
@@ -210,7 +259,7 @@ pkgcloudContainerCopy.readdirRecurse = function (dir) {
 	var _readdirRecurse = function (dir) {
 		var p = nodefn.lift(fs.readdir).bind(fs)(dir);
 		p = when.map(p, function (filename) {
-			var file = path.resolve(dir, filename)
+			var file = path.resolve(dir, filename);
 			return nodefn.lift(fs.stat).bind(fs)(file).then(function (stat) {
 				if (stat.isDirectory()) {
 					return _readdirRecurse(file);
