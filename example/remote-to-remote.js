@@ -3,10 +3,10 @@
 // from the source is started for several files but the writing of those files on the destination
 // doesn't seem to work. It however does work just fine in the remote-to-local and local-to-remote
 // examples.
-pkgcloudContainerCopy = require('../pkgcloudContainerCopy.js');
-remoteConfig = require('./remote-config.json');
+var pkgcloudContainerCopy = require('../pkgcloudContainerCopy.js');
+var remoteConfig = require('./remote-config.json');
 
-destination = pkgcloudContainerCopy.createCloudContainerSpecifer(remoteConfig.b);
-source = pkgcloudContainerCopy.createCloudContainerSpecifer(remoteConfig.a);
+var destination = pkgcloudContainerCopy.createCloudContainerSpecifer(remoteConfig.b);
+var source = pkgcloudContainerCopy.createCloudContainerSpecifer(remoteConfig.a);
 
 pkgcloudContainerCopy.copyContainer(source, destination);

@@ -1,8 +1,8 @@
-pkgcloudContainerCopy = require('../pkgcloudContainerCopy.js');
-remoteConfig = require('./remote-config.json');
-path = require('path');
+var pkgcloudContainerCopy = require('../pkgcloudContainerCopy.js');
+var remoteConfig = require('./remote-config.json');
+var path = require('path');
 
-source = path.resolve(__dirname, 'temp/a');
-destination = path.resolve(__dirname, 'temp/b');
+var source = path.resolve(__dirname, 'temp/a');
+var destination = path.resolve(__dirname, 'temp/b');
 
 pkgcloudContainerCopy.copyContainer(source, destination);
