@@ -6,6 +6,7 @@ var nodefn = require('when/node');
 var md5 = require('MD5');
 var Stream = require('stream');
 var mkdirp = require('mkdirp');
+var guard = require('when/guard');
 
 var pcc = {};
 
@@ -14,24 +15,27 @@ pcc.copyContainer = function (source, destination) {
 		.then(function (valueList) {
 			var plan = pcc.getTransferPlan(valueList[0], valueList[1]);
 			
-			var promiseList = [];
+			console.log(plan);
+			var taskList = [];
 			
 			// created
 			plan.created.forEach(function (file) {
-				var p = pcc.transferFile(source, destination, file).then(function (file) {
-					process.stdout.write('created: ' + file + '\n');
-					return file;
-				});
-				promiseList.push(p);
+				taskList.push({file: file, action: function (file) {
+					return pcc.transferFile(source, destination, file).then(function (file) {
+						process.stdout.write('created: ' + file + '\n');
+						return file;
+					});
+				}});
 			});
 			
 			// modified
 			plan.modified.forEach(function (file) {
-				var p = pcc.transferFile(source, destination, file).then(function (file) {
-					process.stdout.write('modified: ' + file + '\n');
-					return file;
-				});
-				promiseList.push(p);
+				taskList.push({file: file, action: function (file) {
+					return pcc.transferFile(source, destination, file).then(function (file) {
+						process.stdout.write('modified: ' + file + '\n');
+						return file;
+					});
+				}});
 			});
 			
 			// touched
@@ -41,13 +45,19 @@ pcc.copyContainer = function (source, destination) {
 			
 			// deleted
 			plan.deleted.forEach(function (file) {
-				var p = pcc.deleteFile(destination, file).then(function () {
-					process.stdout.write('deleted: ' + file + '\n');
-				});
-				promiseList.push(p);
+				taskList.push({file: file, action: function (file) {
+					return pcc.deleteFile(destination, file).then(function () {
+						process.stdout.write('deleted: ' + file + '\n');
+					});
+				}});
 			});
 			
-			return when.all(promiseList);
+			return when.reduce(taskList, function (completedFiles, task) {
+				return task.action(task.file).then(function (file) {
+					completedFiles.push(file);
+					return completedFiles;
+				});
+			}, []);
 		})
 		.catch(function (err) {
 			console.log('error:', err);
@@ -62,6 +72,10 @@ pcc.transferFile = function (source, destination, file) {
 		sourceStream.pipe(destinationStream);
 		
 		destinationStream.on('finish', function () {
+			resolve(file);
+		});
+		// 'complete' event needed for pkgcloud upload which uses older version of node stream
+		destinationStream.on('complete', function () {
 			resolve(file);
 		});
 		destinationStream.on('error', function (err) {
