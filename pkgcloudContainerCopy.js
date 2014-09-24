@@ -4,8 +4,9 @@ var fs = require('fs');
 var when = require('when');
 var nodefn = require('when/node');
 var md5 = require('MD5');
-var Stream = require('stream');
+var stream = require('stream');
 var mkdirp = require('mkdirp');
+var url = require('url');
 
 var pcc = {};
 
@@ -51,17 +52,24 @@ pcc.copyContainer = function (source, destination) {
 				}});
 			});
 			
-			// return when.all(when.map(taskList, function (task) {
-			// 	return task.action(task.file);
-			// }));
+			if (source.client && destination.client
+				&& source.client._serviceUrl && destination.client._serviceUrl
+				&& url.parse(source.client._serviceUrl).hostname === url.parse(destination.client._serviceUrl).hostname)
+			{
+				// both source and destination are to the same host, probably
+				// going to have problems with max sockets to servers. So
+				// instead do each file sequentially
+				return when.reduce(taskList, function (completedFiles, task) {
+					return task.action(task.file).then(function (file) {
+						completedFiles.push(file);
+						return completedFiles;
+					});
+				}, []);
+			}
 			
-			// was for debugging, limits execution to sequential
-			return when.reduce(taskList, function (completedFiles, task) {
-				return task.action(task.file).then(function (file) {
-					completedFiles.push(file);
-					return completedFiles;
-				});
-			}, []);
+			return when.all(when.map(taskList, function (task) {
+				return task.action(task.file);
+			}));
 		})
 		.catch(function (err) {
 			console.log('error:', err);
@@ -135,25 +143,30 @@ pcc.getDestinationStream = function (containerSpecifer, file) {
 	if (typeof containerSpecifer === 'string') {
 		// need a placeholder stream because the writer stream is going to be
 		// available until the directory is created
-		var stream = new Stream.PassThrough();
+		var passThrough = new stream.PassThrough();
 		// path on local file system
 		var filePath = path.resolve(containerSpecifer, file);
 		nodefn.lift(mkdirp)(path.dirname(filePath))
 			.then(function () {
-				stream.pipe(fs.createWriteStream(filePath));
+				passThrough.pipe(fs.createWriteStream(filePath));
 			})
 		;
-		return stream;
+		return passThrough;
 	} else {
 		// pkgcloud storage container
+		var passThrough = new stream.PassThrough();
+		
 		var client = containerSpecifer.client;
 		var container = containerSpecifer.container;
-		return client.upload({container: container, remote: file}, function (err, result) {
+		var clientStream = client.upload({container: container, remote: file}, function (err, result) {
 			if (err) {
 				process.stdout.write('destination callback err' + '\n');
 				console.log(err);
 			}
 		});
+		// force to node stream v2, solves pkgcloud incompatibility with itself
+		passThrough.pipe(clientStream);
+		return passThrough;
 	}
 };
 
