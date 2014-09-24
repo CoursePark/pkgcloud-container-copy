@@ -10,7 +10,7 @@ var mkdirp = require('mkdirp');
 var pcc = {};
 
 pcc.copyContainer = function (source, destination) {
-	when.join(pcc.getFileList(source), pcc.getFileList(destination))
+	return when.join(pcc.getFileList(source), pcc.getFileList(destination))
 		.then(function (valueList) {
 			var sourceFileList = valueList[0];
 			var destinationFileList = valueList[1];
