@@ -9,10 +9,56 @@ var mkdirp = require('mkdirp');
 
 var pcc = {};
 
+pcc.copyContainer = function (source, destination) {
+	return when.join(pcc.getFileList(source), pcc.getFileList(destination))
+		.then(function (valueList) {
+			var plan = pcc.getTransferPlan(valueList[0], valueList[1]);
+			
+			var promiseList = [];
+			
+			// created
+			plan.created.forEach(function (file) {
+				var p = pcc.transferFile(source, destination, file).then(function (file) {
+					process.stdout.write('created: ' + file + '\n');
+					return file;
+				});
+				promiseList.push(p);
+			});
+			
+			// modified
+			plan.modified.forEach(function (file) {
+				var p = pcc.transferFile(source, destination, file).then(function (file) {
+					process.stdout.write('modified: ' + file + '\n');
+					return file;
+				});
+				promiseList.push(p);
+			});
+			
+			// touched
+			plan.touched.forEach(function (file) {
+				// can't yet set dates on files in pkgcloud storage
+			});
+			
+			// deleted
+			plan.deleted.forEach(function (file) {
+				var p = pcc.deleteFile(destination, file).then(function () {
+					process.stdout.write('deleted: ' + file + '\n');
+				});
+				promiseList.push(p);
+			});
+			
+			return when.all(promiseList);
+		})
+		.catch(function (err) {
+			console.log('error:', err);
+		})
+	;
+};
+
 pcc.transferFile = function (source, destination, file) {
 	return when.promise(function (resolve, reject) {
-		destinationStream = pcc.getDestinationStream(destination, file);
-		sourceStream = pcc.getSourceStream(source, file);
+		var destinationStream = pcc.getDestinationStream(destination, file);
+		var sourceStream = pcc.getSourceStream(source, file);
 		sourceStream.pipe(destinationStream);
 		
 		destinationStream.on('finish', function () {
@@ -27,58 +73,6 @@ pcc.transferFile = function (source, destination, file) {
 			reject(err);
 		});
 	});
-};
-
-pcc.copyContainer = function (source, destination) {
-	return when.join(pcc.getFileList(source), pcc.getFileList(destination))
-		.then(function (valueList) {
-			var sourceFileList = valueList[0];
-			var destinationFileList = valueList[1];
-			
-			var plan = pcc.getTransferPlan(sourceFileList, destinationFileList);
-			
-			var i, file, sourceStream, destinationStream;
-			
-			var promiseList = [];
-			var p;
-			
-			// created
-			plan.created.forEach(function (file) {
-				p = pcc.transferFile(source, destination, file).then(function (file) {
-					process.stdout.write('created: ' + file + '\n');
-					return file;
-				});
-				promiseList.push(p);
-			});
-			
-			// modified
-			plan.modified.forEach(function (file) {
-				p = pcc.transferFile(source, destination, file).then(function (file) {
-					process.stdout.write('modified: ' + file + '\n');
-					return file;
-				});
-				promiseList.push(p);
-			});
-			
-			// touched
-			plan.touched.forEach(function (file) {
-				// can't yet set dates on files in pkgcloud storage
-			});
-			
-			// deleted
-			plan.deleted.forEach(function (file) {
-				p = pcc.deleteFile(destination, file).then(function () {
-					process.stdout.write('deleted: ' + file + '\n');
-				});
-				promiseList.push(p);
-			});
-			
-			return when.all(promiseList);
-		})
-		.catch(function (err) {
-			console.log('error:', err);
-		})
-	;
 };
 
 pcc.createCloudContainerSpecifer = function (clientOption, container) {
@@ -114,7 +108,6 @@ pcc.getSourceStream = function (containerSpecifer, file) {
 			if (err) {
 				process.stdout.write('source callback err' + '\n');
 				console.log(err);
-				return;
 			}
 		});
 	}
@@ -141,7 +134,6 @@ pcc.getDestinationStream = function (containerSpecifer, file) {
 			if (err) {
 				process.stdout.write('destination callback err' + '\n');
 				console.log(err);
-				return;
 			}
 		});
 	}
