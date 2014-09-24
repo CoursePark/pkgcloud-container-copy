@@ -6,7 +6,6 @@ var nodefn = require('when/node');
 var md5 = require('MD5');
 var Stream = require('stream');
 var mkdirp = require('mkdirp');
-var guard = require('when/guard');
 
 var pcc = {};
 
@@ -15,13 +14,12 @@ pcc.copyContainer = function (source, destination) {
 		.then(function (valueList) {
 			var plan = pcc.getTransferPlan(valueList[0], valueList[1]);
 			
-			console.log(plan);
 			var taskList = [];
 			
 			// created
 			plan.created.forEach(function (file) {
 				taskList.push({file: file, action: function (file) {
-					return pcc.transferFile(source, destination, file).then(function (file) {
+					return pcc.transferFile(source, destination, file).then(function () {
 						process.stdout.write('created: ' + file + '\n');
 						return file;
 					});
@@ -31,7 +29,7 @@ pcc.copyContainer = function (source, destination) {
 			// modified
 			plan.modified.forEach(function (file) {
 				taskList.push({file: file, action: function (file) {
-					return pcc.transferFile(source, destination, file).then(function (file) {
+					return pcc.transferFile(source, destination, file).then(function () {
 						process.stdout.write('modified: ' + file + '\n');
 						return file;
 					});
@@ -48,10 +46,16 @@ pcc.copyContainer = function (source, destination) {
 				taskList.push({file: file, action: function (file) {
 					return pcc.deleteFile(destination, file).then(function () {
 						process.stdout.write('deleted: ' + file + '\n');
+						return file;
 					});
 				}});
 			});
 			
+			// return when.all(when.map(taskList, function (task) {
+			// 	return task.action(task.file);
+			// }));
+			
+			// was for debugging, limits execution to sequential
 			return when.reduce(taskList, function (completedFiles, task) {
 				return task.action(task.file).then(function (file) {
 					completedFiles.push(file);
@@ -74,8 +78,8 @@ pcc.transferFile = function (source, destination, file) {
 		destinationStream.on('finish', function () {
 			resolve(file);
 		});
-		// 'complete' event needed for pkgcloud upload which uses older version of node stream
-		destinationStream.on('complete', function () {
+		// 'end' event because of old streams used in request package, which is used by pkgcloud upload
+		destinationStream.on('end', function () {
 			resolve(file);
 		});
 		destinationStream.on('error', function (err) {
@@ -161,7 +165,11 @@ pcc.deleteFile = function (containerSpecifer, file) {
 		// pkgcloud storage container
 		var client = containerSpecifer.client;
 		var container = containerSpecifer.container;
-		return nodefn.lift(client.removeFile).bind(client)(container, file);
+		return nodefn.lift(client.removeFile).bind(client)(container, file)
+			.then(function () {
+				return file;
+			})
+		;
 	}
 };
 
