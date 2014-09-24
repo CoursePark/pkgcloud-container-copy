@@ -10,96 +10,94 @@ var mkdirp = require('mkdirp');
 var pcc = {};
 
 pcc.copyContainer = function (source, destination) {
-	when.all([
-		pcc.getFileList(source),
-		pcc.getFileList(destination)
-	])
-	.then(function (valueList) {
-		var sourceFileList = valueList[0];
-		var destinationFileList = valueList[1];
-		
-		var plan = pcc.getTransferPlan(sourceFileList, destinationFileList);
-		
-		var i, file, sourceStream, destinationStream;
-		
-		// created
-		plan.created.forEach(function (file) {
-			destinationStream = pcc.getDestinationStream(destination, file);
-			sourceStream = pcc.getSourceStream(source, file);
-			sourceStream.pipe(destinationStream);
+	when.join(pcc.getFileList(source), pcc.getFileList(destination))
+		.then(function (valueList) {
+			var sourceFileList = valueList[0];
+			var destinationFileList = valueList[1];
 			
-			sourceStream.on('end', function () {
-				process.stdout.write('created: ' + file + '\n');
-			});
-			// finish not firing on uploads
-			// destinationStream.on('finish', function () {
-			// 	process.stdout.write('created: ' + file + '\n');
-			// });
+			var plan = pcc.getTransferPlan(sourceFileList, destinationFileList);
 			
-			/* attempting to debug the remote-to-remote example not working
-			sourceStream.on('readable', function () {
-				console.log('readable');
-			});
-			sourceStream.on('data', function () {
-				console.log('data');
-			});
-			sourceStream.on('close', function () {
-				console.log('close');
-			});
-			sourceStream.on('end', function () {
-				console.log('end');
-			});
-			sourceStream.on('error', function (err) {
-				console.log('error', err);
+			var i, file, sourceStream, destinationStream;
+			
+			// created
+			plan.created.forEach(function (file) {
+				destinationStream = pcc.getDestinationStream(destination, file);
+				sourceStream = pcc.getSourceStream(source, file);
+				sourceStream.pipe(destinationStream);
+				
+				sourceStream.on('end', function () {
+					process.stdout.write('created: ' + file + '\n');
+				});
+				// finish not firing on uploads
+				// destinationStream.on('finish', function () {
+				// 	process.stdout.write('created: ' + file + '\n');
+				// });
+				
+				/* attempting to debug the remote-to-remote example not working
+				sourceStream.on('readable', function () {
+					console.log('readable');
+				});
+				sourceStream.on('data', function () {
+					console.log('data');
+				});
+				sourceStream.on('close', function () {
+					console.log('close');
+				});
+				sourceStream.on('end', function () {
+					console.log('end');
+				});
+				sourceStream.on('error', function (err) {
+					console.log('error', err);
+				});
+				
+				destinationStream.on('finish', function () {
+					console.log('finish');
+				});
+				destinationStream.on('error', function (err) {
+					console.log('error', err);
+				});
+				destinationStream.on('pipe', function () {
+					console.log('pipe');
+				});
+				destinationStream.on('drain', function () {
+					console.log('drain');
+				});
+				destinationStream.on('unpipe', function () {
+					console.log('unpipe');
+				});
+				 */
 			});
 			
-			destinationStream.on('finish', function () {
-				console.log('finish');
+			// modified
+			plan.modified.forEach(function (file) {
+				destinationStream = pcc.getDestinationStream(destination, file);
+				sourceStream = pcc.getSourceStream(source, file);
+				sourceStream.pipe(destinationStream);
+				sourceStream.on('end', function () {
+					process.stdout.write('modified: ' + file + '\n');
+				});
+				// finish not firing on uploads
+				// destinationStream.on('finish', function () {
+				// 	process.stdout.write('modified: ' + file + '\n');
+				// });
 			});
-			destinationStream.on('error', function (err) {
-				console.log('error', err);
+			
+			// touched
+			plan.touched.forEach(function (file) {
+				// can't yet set dates on files in pkgcloud storage
 			});
-			destinationStream.on('pipe', function () {
-				console.log('pipe');
+			
+			// deleted
+			plan.deleted.forEach(function (file) {
+				pcc.deleteFile(destination, file).then(function () {
+					process.stdout.write('deleted: ' + file + '\n');
+				});
 			});
-			destinationStream.on('drain', function () {
-				console.log('drain');
-			});
-			destinationStream.on('unpipe', function () {
-				console.log('unpipe');
-			});
-			 */
-		});
-		
-		// modified
-		plan.modified.forEach(function (file) {
-			destinationStream = pcc.getDestinationStream(destination, file);
-			sourceStream = pcc.getSourceStream(source, file);
-			sourceStream.pipe(destinationStream);
-			sourceStream.on('end', function () {
-				process.stdout.write('modified: ' + file + '\n');
-			});
-			// finish not firing on uploads
-			// destinationStream.on('finish', function () {
-			// 	process.stdout.write('modified: ' + file + '\n');
-			// });
-		});
-		
-		// touched
-		plan.touched.forEach(function (file) {
-			// can't yet set dates on files in pkgcloud storage
-		});
-		
-		// deleted
-		plan.deleted.forEach(function (file) {
-			pcc.deleteFile(destination, file).then(function () {
-				process.stdout.write('deleted: ' + file + '\n');
-			});
-		});
-	})
-	.catch(function (err) {
-		console.log(err);
-	});
+		})
+		.catch(function (err) {
+			console.log(err);
+		})
+	;
 };
 
 pcc.createCloudContainerSpecifer = function (clientOption, container) {
