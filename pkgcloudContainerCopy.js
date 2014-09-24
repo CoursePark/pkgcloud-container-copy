@@ -9,6 +9,26 @@ var mkdirp = require('mkdirp');
 
 var pcc = {};
 
+pcc.transferFile = function (source, destination, file) {
+	return when.promise(function (resolve, reject) {
+		destinationStream = pcc.getDestinationStream(destination, file);
+		sourceStream = pcc.getSourceStream(source, file);
+		sourceStream.pipe(destinationStream);
+		
+		destinationStream.on('finish', function () {
+			resolve(file);
+		});
+		destinationStream.on('error', function (err) {
+			process.stdout.write('destination error: ' + file + '\n');
+			reject(err);
+		});
+		sourceStream.on('error', function (err) {
+			process.stdout.write('source error: ' + file + '\n');
+			reject(err);
+		});
+	});
+};
+
 pcc.copyContainer = function (source, destination) {
 	return when.join(pcc.getFileList(source), pcc.getFileList(destination))
 		.then(function (valueList) {
@@ -19,67 +39,25 @@ pcc.copyContainer = function (source, destination) {
 			
 			var i, file, sourceStream, destinationStream;
 			
+			var promiseList = [];
+			var p;
+			
 			// created
 			plan.created.forEach(function (file) {
-				destinationStream = pcc.getDestinationStream(destination, file);
-				sourceStream = pcc.getSourceStream(source, file);
-				sourceStream.pipe(destinationStream);
-				
-				sourceStream.on('end', function () {
+				p = pcc.transferFile(source, destination, file).then(function (file) {
 					process.stdout.write('created: ' + file + '\n');
+					return file;
 				});
-				// finish not firing on uploads
-				// destinationStream.on('finish', function () {
-				// 	process.stdout.write('created: ' + file + '\n');
-				// });
-				
-				/* attempting to debug the remote-to-remote example not working
-				sourceStream.on('readable', function () {
-					console.log('readable');
-				});
-				sourceStream.on('data', function () {
-					console.log('data');
-				});
-				sourceStream.on('close', function () {
-					console.log('close');
-				});
-				sourceStream.on('end', function () {
-					console.log('end');
-				});
-				sourceStream.on('error', function (err) {
-					console.log('error', err);
-				});
-				
-				destinationStream.on('finish', function () {
-					console.log('finish');
-				});
-				destinationStream.on('error', function (err) {
-					console.log('error', err);
-				});
-				destinationStream.on('pipe', function () {
-					console.log('pipe');
-				});
-				destinationStream.on('drain', function () {
-					console.log('drain');
-				});
-				destinationStream.on('unpipe', function () {
-					console.log('unpipe');
-				});
-				 */
+				promiseList.push(p);
 			});
 			
 			// modified
 			plan.modified.forEach(function (file) {
-				destinationStream = pcc.getDestinationStream(destination, file);
-				sourceStream = pcc.getSourceStream(source, file);
-				sourceStream.pipe(destinationStream);
-				sourceStream.on('end', function () {
+				p = pcc.transferFile(source, destination, file).then(function (file) {
 					process.stdout.write('modified: ' + file + '\n');
+					return file;
 				});
-				// finish not firing on uploads
-				// destinationStream.on('finish', function () {
-				// 	process.stdout.write('modified: ' + file + '\n');
-				// });
+				promiseList.push(p);
 			});
 			
 			// touched
@@ -89,13 +67,16 @@ pcc.copyContainer = function (source, destination) {
 			
 			// deleted
 			plan.deleted.forEach(function (file) {
-				pcc.deleteFile(destination, file).then(function () {
+				p = pcc.deleteFile(destination, file).then(function () {
 					process.stdout.write('deleted: ' + file + '\n');
 				});
+				promiseList.push(p);
 			});
+			
+			return when.all(promiseList);
 		})
 		.catch(function (err) {
-			console.log(err);
+			console.log('error:', err);
 		})
 	;
 };
