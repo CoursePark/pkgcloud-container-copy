@@ -16,5 +16,13 @@
 			"region": "DFW"
 		},
 		"container": "name-of-container-b"
+	},
+	"c": {
+		"client": {
+			"provider": "amazon",
+			"keyId": "ABD39J43NK13JK",
+			"key": "jkfASDdjfls123DsdDhdsEhjkjJa92dsw3123e"
+		},
+		"container": "name-of-bucket-c"
 	}
 }

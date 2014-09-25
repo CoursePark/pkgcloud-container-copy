@@ -91,11 +91,11 @@ pcc.transferFile = function (source, destination, file) {
 			resolve(file);
 		});
 		destinationStream.on('error', function (err) {
-			process.stdout.write('destination error: ' + file + '\n');
+			console.log('destination error:', file);
 			reject(err);
 		});
 		sourceStream.on('error', function (err) {
-			process.stdout.write('source error: ' + file + '\n');
+			console.log('source error:', file);
 			reject(err);
 		});
 	});
@@ -132,8 +132,7 @@ pcc.getSourceStream = function (containerSpecifer, file) {
 		var container = containerSpecifer.container;
 		return client.download({container: container, remote: file}, function (err) {
 			if (err) {
-				process.stdout.write('source callback err' + '\n');
-				console.log(err);
+				console.log('source callback error:', err);
 			}
 		});
 	}
@@ -160,8 +159,7 @@ pcc.getDestinationStream = function (containerSpecifer, file) {
 		var container = containerSpecifer.container;
 		var clientStream = client.upload({container: container, remote: file}, function (err, result) {
 			if (err) {
-				process.stdout.write('destination callback err' + '\n');
-				console.log(err);
+				console.log('destination callback error:', err);
 			}
 		});
 		// force to node stream v2, solves pkgcloud incompatibility with itself
@@ -234,7 +232,9 @@ pcc.getTransferPlan = function (sourceFileList, destinationFileList) {
 			continue;
 		}
 		
-		if (s.size !== d.size || pcc.contentHash(s) !== pcc.contentHash(d)) {
+		var sourceHash = pcc.contentHash(s);
+		var destinationHash = pcc.contentHash(d);
+		if (s.size !== d.size || sourceHash === null || destinationHash === null || sourceHash !== destinationHash) {
 			plan.modified.push(s.name);
 		} else if (s.lastModified !== d.lastModified && false) { // date isn't settable. So destination date will never match source
 			// date changed
@@ -255,7 +255,11 @@ pcc.contentHash = function (fileModel) {
 		return fileModel.etag;
 	}
 	
-	return md5(fs.readFileSync(path.resolve(fileModel.baseDir, fileModel.name)));
+	if (fileModel.location === 'local') {
+		return md5(fs.readFileSync(path.resolve(fileModel.baseDir, fileModel.name)));
+	}
+	
+	return null;
 };
 
 pcc.readdirRecurse = function (dir) {
@@ -276,7 +280,8 @@ pcc.readdirRecurse = function (dir) {
 					name: file.substring(baseDir.length),
 					lastModified: stat.mtime,
 					size: stat.size,
-					baseDir: baseDir
+					baseDir: baseDir,
+					location: 'local'
 				});
 			});
 		});
@@ -298,7 +303,11 @@ pcc.getFileList = function (containerSpecifer) {
 		var client = containerSpecifer.client;
 		var container = containerSpecifer.container;
 		
-		var p = nodefn.lift(client.getFiles).bind(client)(container);
+		var p = nodefn.lift(client.getFiles).bind(client)(container)
+			.catch(function (err) {
+				console.log('get file list error:', err);
+			})
+		;
 		
 		p = when.map(p, function (fileModel) {
 			return pcc.cloudFileModel(fileModel);
@@ -313,7 +322,8 @@ pcc.cloudFileModel = function (fullModel) {
 		name: fullModel.name,
 		lastModified: fullModel.lastModified,
 		size: fullModel.size,
-		etag: fullModel.etag
+		etag: fullModel.etag ? fullModel.etag : null,
+		location: 'remote'
 	};
 };
 
