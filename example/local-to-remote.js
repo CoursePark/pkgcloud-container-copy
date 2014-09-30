@@ -3,7 +3,7 @@ var remoteConfig = require('./remote-config.json');
 var path = require('path');
 
 var source = path.resolve(__dirname, 'temp/b');
-var destination = pkgcloudContainerCopy.createCloudContainerSpecifer(remoteConfig.c);
+var destination = pkgcloudContainerCopy.createCloudContainerSpecifer(remoteConfig.d);
 
 pkgcloudContainerCopy.copyContainer(source, destination)
 	.done(function (result) {

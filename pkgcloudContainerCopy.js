@@ -1,4 +1,5 @@
 var pkgcloud = require('pkgcloud');
+var AWS = require('aws-sdk');
 var path = require('path');
 var fs = require('fs');
 var when = require('when');
@@ -21,7 +22,7 @@ pcc.copyContainer = function (source, destination) {
 			plan.created.forEach(function (file) {
 				taskList.push({file: file, action: function (file) {
 					return pcc.transferFile(source, destination, file).then(function () {
-						process.stdout.write('created: ' + file + '\n');
+						process.stdout.write('created: ' + file.name + ' ' + file.size + '\n');
 						return file;
 					});
 				}});
@@ -31,7 +32,7 @@ pcc.copyContainer = function (source, destination) {
 			plan.modified.forEach(function (file) {
 				taskList.push({file: file, action: function (file) {
 					return pcc.transferFile(source, destination, file).then(function () {
-						process.stdout.write('modified: ' + file + '\n');
+						process.stdout.write('modified: ' + file.name + ' ' + file.size + '\n');
 						return file;
 					});
 				}});
@@ -46,16 +47,15 @@ pcc.copyContainer = function (source, destination) {
 			plan.deleted.forEach(function (file) {
 				taskList.push({file: file, action: function (file) {
 					return pcc.deleteFile(destination, file).then(function () {
-						process.stdout.write('deleted: ' + file + '\n');
+						process.stdout.write('deleted: ' + file.name + '\n');
 						return file;
 					});
 				}});
 			});
 			
-			if (source.client && destination.client
-				&& source.client._serviceUrl && destination.client._serviceUrl
-				&& url.parse(source.client._serviceUrl).hostname === url.parse(destination.client._serviceUrl).hostname)
-			{
+			var sourceHostname = pcc.getHostname(source);
+			var destinationHostname = pcc.getHostname(destination);
+			if (sourceHostname !== null && sourceHostname === destinationHostname) {
 				// both source and destination are to the same host, probably
 				// going to have problems with max sockets to servers. So
 				// instead do each file sequentially
@@ -84,24 +84,34 @@ pcc.transferFile = function (source, destination, file) {
 		sourceStream.pipe(destinationStream);
 		
 		destinationStream.on('finish', function () {
-			resolve(file);
+			resolve(file.name);
 		});
 		// 'end' event because of old streams used in request package, which is used by pkgcloud upload
 		destinationStream.on('end', function () {
-			resolve(file);
+			resolve(file.name);
 		});
 		destinationStream.on('error', function (err) {
-			console.log('destination error:', file);
+			console.log('destination error:', file.name);
 			reject(err);
 		});
 		sourceStream.on('error', function (err) {
-			console.log('source error:', file);
+			console.log('source error:', file.name);
 			reject(err);
 		});
 	});
 };
 
 pcc.createCloudContainerSpecifer = function (clientOption, container) {
+	if (clientOption['AWS-S3']) {
+		return new AWS.S3({
+			region: clientOption['AWS-S3'].region,
+			params: {
+				Bucket: clientOption['AWS-S3'].Bucket,
+				EncodingType: 'url'
+			}
+		});
+	}
+	
 	if (container === undefined) {
 		container = clientOption.container;
 		clientOption = clientOption.client;
@@ -125,12 +135,15 @@ pcc.createCloudContainerSpecifer = function (clientOption, container) {
 pcc.getSourceStream = function (containerSpecifer, file) {
 	if (typeof containerSpecifer === 'string') {
 		// path on local file system
-		return fs.createReadStream(path.resolve(containerSpecifer, file));
+		return fs.createReadStream(path.resolve(containerSpecifer, file.name));
+	} else if (containerSpecifer instanceof AWS.S3) {
+		// AWS S3
+		return containerSpecifer.getObject({Key: file.name}).createReadStream();
 	} else {
 		// pkgcloud storage container
 		var client = containerSpecifer.client;
 		var container = containerSpecifer.container;
-		return client.download({container: container, remote: file}, function (err) {
+		return client.download({container: container, remote: file.name}, function (err) {
 			if (err) {
 				console.log('source callback error:', err);
 			}
@@ -144,12 +157,23 @@ pcc.getDestinationStream = function (containerSpecifer, file) {
 		// available until the directory is created
 		var passThrough = new stream.PassThrough();
 		// path on local file system
-		var filePath = path.resolve(containerSpecifer, file);
+		var filePath = path.resolve(containerSpecifer, file.name);
 		nodefn.lift(mkdirp)(path.dirname(filePath))
 			.then(function () {
 				passThrough.pipe(fs.createWriteStream(filePath));
 			})
 		;
+		return passThrough;
+	} else if (containerSpecifer instanceof AWS.S3) {
+		// AWS S3
+		var passThrough = new stream.PassThrough();
+		
+		containerSpecifer.putObject({Key: file.name, Body: passThrough, ContentLength: file.size}, function (err) {
+			if (err) {
+				console.log('destination callback error:', err);
+			}
+		});
+		
 		return passThrough;
 	} else {
 		// pkgcloud storage container
@@ -157,7 +181,7 @@ pcc.getDestinationStream = function (containerSpecifer, file) {
 		
 		var client = containerSpecifer.client;
 		var container = containerSpecifer.container;
-		var clientStream = client.upload({container: container, remote: file}, function (err, result) {
+		var clientStream = client.upload({container: container, remote: file.name}, function (err) {
 			if (err) {
 				console.log('destination callback error:', err);
 			}
@@ -171,15 +195,42 @@ pcc.getDestinationStream = function (containerSpecifer, file) {
 pcc.deleteFile = function (containerSpecifer, file) {
 	if (typeof containerSpecifer === 'string') {
 		// path on local file system
-		return nodefn.lift(fs.unlink).bind(fs)(path.resolve(containerSpecifer, file));
+		return nodefn.lift(fs.unlink).bind(fs)(path.resolve(containerSpecifer, file.name))
+			.then(function () {
+				return file.name;
+			})
+		;
+	} else if (containerSpecifer instanceof AWS.S3) {
+		// AWS S3
+		return nodefn.lift(containerSpecifer.deleteObject).bind(containerSpecifer)({Key: file.name})
+			.then(function () {
+				return file.name;
+			})
+		;
 	} else {
 		// pkgcloud storage container
 		var client = containerSpecifer.client;
 		var container = containerSpecifer.container;
-		return nodefn.lift(client.removeFile).bind(client)(container, file)
+		return nodefn.lift(client.removeFile).bind(client)(container, file.name)
 			.then(function () {
-				return file;
+				return file.name;
 			})
+		;
+	}
+};
+
+pcc.getHostname = function (containerSpecifer) {
+	if (typeof containerSpecifer === 'string') {
+		// path on local file system
+		return null;
+	} else if (containerSpecifer instanceof AWS.S3) {
+		// AWS S3
+		return containerSpecifer.endpoint.hostname;
+	} else {
+		// pkgcloud storage container
+		return containerSpecifer.client && containerSpecifer.client._serviceUrl
+			? url.parse(containerSpecifer.client._serviceUrl).hostname
+			: null
 		;
 	}
 };
@@ -206,13 +257,13 @@ pcc.getTransferPlan = function (sourceFileList, destinationFileList) {
 	for (var sPos = 0, dPos = 0; sPos < sourceFileList.length || dPos < destinationFileList.length;) {
 		
 		if (dPos === destinationFileList.length) {
-			plan.created.push(sourceFileList[sPos].name);
+			plan.created.push(sourceFileList[sPos]);
 			sPos++;
 			continue;
 		}
 		
 		if (sPos === sourceFileList.length) {
-			plan.deleted.push(destinationFileList[dPos].name);
+			plan.deleted.push(destinationFileList[dPos]);
 			dPos++;
 			continue;
 		}
@@ -221,26 +272,24 @@ pcc.getTransferPlan = function (sourceFileList, destinationFileList) {
 		var d = destinationFileList[dPos];
 		
 		if (s.name < d.name) {
-			plan.created.push(s.name);
+			plan.created.push(s);
 			sPos++;
 			continue;
 		}
 		
 		if (s.name > d.name) {
-			plan.deleted.push(d.name);
+			plan.deleted.push(d);
 			dPos++;
 			continue;
 		}
 		
-		var sourceHash = pcc.contentHash(s);
-		var destinationHash = pcc.contentHash(d);
-		if (s.size !== d.size || sourceHash === null || destinationHash === null || sourceHash !== destinationHash) {
-			plan.modified.push(s.name);
+		if (s.size !== d.size || s.etag === null || d.etag === null || s.etag !== d.etag) {
+			plan.modified.push(s);
 		} else if (s.lastModified !== d.lastModified && false) { // date isn't settable. So destination date will never match source
 			// date changed
-			plan.touched.push(s.name);
+			plan.touched.push(s);
 		} else {
-			plan.unchanged.push(s.name);
+			plan.unchanged.push(s);
 		}
 		
 		sPos++;
@@ -248,18 +297,6 @@ pcc.getTransferPlan = function (sourceFileList, destinationFileList) {
 	}
 	
 	return plan;
-};
-
-pcc.contentHash = function (fileModel) {
-	if (fileModel.etag) {
-		return fileModel.etag;
-	}
-	
-	if (fileModel.location === 'local') {
-		return md5(fs.readFileSync(path.resolve(fileModel.baseDir, fileModel.name)));
-	}
-	
-	return null;
 };
 
 pcc.readdirRecurse = function (dir) {
@@ -280,7 +317,7 @@ pcc.readdirRecurse = function (dir) {
 					name: file.substring(baseDir.length),
 					lastModified: stat.mtime,
 					size: stat.size,
-					baseDir: baseDir,
+					etag: md5(fs.readFileSync(file))
 					location: 'local'
 				});
 			});
@@ -298,6 +335,19 @@ pcc.getFileList = function (containerSpecifer) {
 	if (typeof containerSpecifer === 'string') {
 		// path on local file system
 		return pcc.readdirRecurse(containerSpecifer);
+	} else if (containerSpecifer instanceof AWS.S3) {
+		// AWS S3
+		var p = nodefn.lift(containerSpecifer.listObjects).bind(containerSpecifer)({});
+		
+		p = p.then(function (data) {
+			return data.Contents;
+		});
+		
+		p = when.map(p, function (fileModel) {
+			return pcc.cloudFileModel(fileModel);
+		});
+		
+		return p;
 	} else {
 		// pkgcloud storage container
 		var client = containerSpecifer.client;
@@ -319,10 +369,13 @@ pcc.getFileList = function (containerSpecifer) {
 
 pcc.cloudFileModel = function (fullModel) {
 	return {
-		name: fullModel.name,
-		lastModified: fullModel.lastModified,
-		size: fullModel.size,
-		etag: fullModel.etag ? fullModel.etag : null,
+		name: fullModel.name || fullModel.Key,
+		lastModified: fullModel.lastModified || fullModel.LastModified,
+		size: fullModel.size || fullModel.Size,
+		etag: (fullModel.etag || fullModel.ETag)
+			? (fullModel.etag || fullModel.ETag)
+			: null
+		,
 		location: 'remote'
 	};
 };

@@ -23,10 +23,11 @@
     "url": "git@github.com:CoursePark/pkgcloud-container-copy.git"
   },
   "dependencies": {
-    "pkgcloud": "0.9.6",
-    "when": "3.4.6",
+    "aws-sdk": "2.0.17",
     "MD5": "1.2.1",
-    "mkdirp": "0.5.0"
+    "mkdirp": "0.5.0",
+    "pkgcloud": "0.9.6",
+    "when": "3.4.6"
   },
   "devDependencies": {
     "jshint": "2.5.6"
