@@ -1,6 +1,6 @@
 {
   "name": "pkgcloud-container-copy",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "Copy files or directories to or from cloud providers using the pkgcloud library",
   "keywords": [
     "Cloud",
@@ -14,7 +14,10 @@
     "pkgcloud",
     "HP",
     "Openstack",
-    "Rackspace"
+    "Rackspace",
+    "Amazon",
+    "AWS",
+    "S3"
   ],
   "license": "Talk to the legal department or ask me and I'll get this sorted",
   "main": "pkgcloudContainerCopy.js",
