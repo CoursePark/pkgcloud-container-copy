@@ -317,7 +317,7 @@ pcc.readdirRecurse = function (dir) {
 					name: file.substring(baseDir.length),
 					lastModified: stat.mtime,
 					size: stat.size,
-					etag: md5(fs.readFileSync(file))
+					etag: md5(fs.readFileSync(file)),
 					location: 'local'
 				});
 			});
@@ -368,14 +368,15 @@ pcc.getFileList = function (containerSpecifer) {
 };
 
 pcc.cloudFileModel = function (fullModel) {
+	var etag = (fullModel.etag || fullModel.ETag)
+		? (fullModel.etag || fullModel.ETag.replace('"', '').replace('"', ''))
+		: null
+	;
 	return {
 		name: fullModel.name || fullModel.Key,
 		lastModified: fullModel.lastModified || fullModel.LastModified,
 		size: fullModel.size || fullModel.Size,
-		etag: (fullModel.etag || fullModel.ETag)
-			? (fullModel.etag || fullModel.ETag)
-			: null
-		,
+		etag: etag,
 		location: 'remote'
 	};
 };

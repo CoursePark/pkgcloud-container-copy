@@ -1,8 +1,8 @@
 var pkgcloudContainerCopy = require('../pkgcloudContainerCopy.js');
 var remoteConfig = require('./remote-config.json');
 
-var destination = pkgcloudContainerCopy.createCloudContainerSpecifer(remoteConfig.b);
-var source = pkgcloudContainerCopy.createCloudContainerSpecifer(remoteConfig.a);
+var source = pkgcloudContainerCopy.createCloudContainerSpecifer(remoteConfig.d);
+var destination = pkgcloudContainerCopy.createCloudContainerSpecifer(remoteConfig.e);
 
 var attempt = 0;
 var attemptCopy = function () {
