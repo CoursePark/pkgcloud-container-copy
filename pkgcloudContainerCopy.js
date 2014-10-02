@@ -20,12 +20,23 @@ pcc.copyContainer = function (source, destination) {
 			
 			// created
 			plan.created.forEach(function (file) {
-				taskList.push({file: file, action: function (file) {
-					return pcc.transferFile(source, destination, file).then(function () {
-						process.stdout.write('created: ' + file.name + ' ' + file.size + '\n');
-						return file;
-					});
-				}});
+				if (file.isDir) {
+					// directory
+					taskList.push({file: file, action: function (file) {
+						return pcc.createDir(destination, file).then(function () {
+							process.stdout.write('created: ' + file.name + ' ' + file.size + '\n');
+							return file;
+						});
+					}});
+				} else {
+					// file
+					taskList.push({file: file, action: function (file) {
+						return pcc.transferFile(source, destination, file).then(function () {
+							process.stdout.write('created: ' + file.name + ' ' + file.size + '\n');
+							return file;
+						});
+					}});
+				}
 			});
 			
 			// modified
@@ -44,13 +55,24 @@ pcc.copyContainer = function (source, destination) {
 			});
 			
 			// deleted
-			plan.deleted.forEach(function (file) {
-				taskList.push({file: file, action: function (file) {
-					return pcc.deleteFile(destination, file).then(function () {
-						process.stdout.write('deleted: ' + file.name + '\n');
-						return file;
-					});
-				}});
+			plan.deleted.reverse().forEach(function (file) {
+				if (file.isDir) {
+					// directory
+					taskList.push({file: file, action: function (file) {
+						return pcc.deleteDir(destination, file).then(function () {
+							process.stdout.write('deleted: ' + file.name + '\n');
+							return file;
+						});
+					}});
+				} else {
+					// file
+					taskList.push({file: file, action: function (file) {
+						return pcc.deleteFile(destination, file).then(function () {
+							process.stdout.write('deleted: ' + file.name + '\n');
+							return file;
+						});
+					}});
+				}
 			});
 			
 			var sourceHostname = pcc.getHostname(source);
@@ -192,6 +214,76 @@ pcc.getDestinationStream = function (containerSpecifer, file) {
 	}
 };
 
+pcc.createDir = function (containerSpecifer, file) {
+	if (typeof containerSpecifer === 'string') {
+		// path on local file system
+		return nodefn.lift(mkdirp)(path.resolve(containerSpecifer, file.name))
+			.then(function () {
+				return file.name;
+			})
+		;
+	} else if (containerSpecifer instanceof AWS.S3) {
+		// AWS S3
+		return when.resolve(file.name); // not applicable
+	} else {
+		// pkgcloud storage container
+		return when.resolve(file.name); // not applicable
+	}
+};
+
+pcc.deleteDir = function (containerSpecifer, file) {
+	if (typeof containerSpecifer === 'string') {
+		// path on local file system
+		// remove empty directory
+		
+		// directory may not yet be empty (because async) so.. hack, looped waiting
+		
+		var maxTry = 20;
+		var attempt = 0;
+		
+		var unspool = function () {
+			attempt++;
+			if (attempt > maxTry) {
+				return when.reject('directory not empty ' + file.name);
+			}
+			return nodefn.lift(fs.readdir).bind(fs)(path.resolve(containerSpecifer, file.name))
+				.then(function (dirContent) {
+					if (dirContent.length) {
+						// must wait until dir is empty
+						return when.resolve([null, false]).delay(100);
+					}
+					return nodefn.lift(fs.rmdir).bind(fs)(path.resolve(containerSpecifer, file.name));
+				})
+				.catch(function (err) {
+					if (err.code !== 'ENOENT') {
+						return when.reject(err);
+					}
+					// directory no longer exists, good enough
+					return [null, true];
+				})
+				.then(function () {
+					return [null, true];
+				})
+			;
+		};
+		
+		var predicate = function (seed) {
+			return seed;
+		};
+		return when.unfold(unspool, predicate, function () {})
+			.then(function() {
+				return file.name
+			})
+		;
+	} else if (containerSpecifer instanceof AWS.S3) {
+		// AWS S3
+		return when.resolve(file.name); // not applicable
+	} else {
+		// pkgcloud storage container
+		return when.resolve(file.name); // not applicable
+	}
+};
+
 pcc.deleteFile = function (containerSpecifer, file) {
 	if (typeof containerSpecifer === 'string') {
 		// path on local file system
@@ -235,10 +327,11 @@ pcc.getHostname = function (containerSpecifer) {
 	}
 };
 
-pcc.sortByName = function (x, y) {
-	if (x.name == y.name) {
+pcc.sort = function (x, y) {
+	if (x.name === y.name) {
 		return 0;
 	}
+	
 	return x.name > y.name ? 1 : -1;
 };
 
@@ -251,8 +344,8 @@ pcc.getTransferPlan = function (sourceFileList, destinationFileList) {
 		unchanged: []
 	};
 	
-	sourceFileList = sourceFileList.sort(pcc.sortByName);
-	destinationFileList = destinationFileList.sort(pcc.sortByName);
+	sourceFileList = sourceFileList.sort(pcc.sort);
+	destinationFileList = destinationFileList.sort(pcc.sort);
 	
 	for (var sPos = 0, dPos = 0; sPos < sourceFileList.length || dPos < destinationFileList.length;) {
 		
@@ -271,21 +364,37 @@ pcc.getTransferPlan = function (sourceFileList, destinationFileList) {
 		var s = sourceFileList[sPos];
 		var d = destinationFileList[dPos];
 		
-		if (s.name < d.name) {
+		if (pcc.sort(s, d) === -1) {
+			if (s.isDir && d.name.substring(0, s.name.length + 1) === s.name + path.sep) {
+				// source directory is contained in destination file
+				sPos++;
+				continue;
+			}
+			// source file doesn't exist on destination
 			plan.created.push(s);
 			sPos++;
 			continue;
 		}
 		
-		if (s.name > d.name) {
+		if (pcc.sort(s, d) === 1) {
+			if (d.isDir && s.name.substring(0, d.name.length + 1) === d.name + path.sep) {
+				// destination directory is contained in source file
+				dPos++;
+				continue;
+			}
 			plan.deleted.push(d);
 			dPos++;
 			continue;
 		}
 		
-		if (s.size !== d.size || s.etag === null || d.etag === null || s.etag !== d.etag) {
+		if (s.name === d.name && s.isDir ^ d.isDir) {
+			plan.created.push(s);
+			plan.deleted.push(d);
+		}
+		
+		if (!s.isDir && !d.isDir && (s.size !== d.size || s.etag === null || d.etag === null || s.etag !== d.etag)) {
 			plan.modified.push(s);
-		} else if (s.lastModified !== d.lastModified && false) { // date isn't settable. So destination date will never match source
+		} else if (!s.isDir && !d.isDir && (s.lastModified !== d.lastModified && false)) { // date isn't settable. So destination date will never match source
 			// date changed
 			plan.touched.push(s);
 		} else {
@@ -309,6 +418,12 @@ pcc.readdirRecurse = function (dir) {
 			var file = path.resolve(dir, filename);
 			return nodefn.lift(fs.stat).bind(fs)(file).then(function (stat) {
 				if (stat.isDirectory()) {
+					// a directory
+					fileList.push({
+						name: file.substring(baseDir.length),
+						isDir: true,
+						location: 'local'
+					});
 					return _readdirRecurse(file);
 				}
 				
@@ -318,6 +433,7 @@ pcc.readdirRecurse = function (dir) {
 					lastModified: stat.mtime,
 					size: stat.size,
 					etag: md5(fs.readFileSync(file)),
+					isDir: false,
 					location: 'local'
 				});
 			});
@@ -377,6 +493,7 @@ pcc.cloudFileModel = function (fullModel) {
 		lastModified: fullModel.lastModified || fullModel.LastModified,
 		size: fullModel.size || fullModel.Size,
 		etag: etag,
+		isDir: false,
 		location: 'remote'
 	};
 };
