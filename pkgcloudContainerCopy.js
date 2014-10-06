@@ -128,7 +128,7 @@ pcc.createCloudContainerSpecifer = function (clientOption, container) {
 		return new AWS.S3({
 			region: clientOption['AWS-S3'].region,
 			params: {
-				Bucket: clientOption['AWS-S3'].Bucket,
+				Bucket: clientOption['AWS-S3'].bucket,
 				EncodingType: 'url'
 			}
 		});

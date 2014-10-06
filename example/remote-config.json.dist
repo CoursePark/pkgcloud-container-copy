@@ -26,9 +26,9 @@
 		"container": "name-of-bucket-c"
 	},
 	"d": {
-		"AWS-S3": {"Bucket": "name-of-bucket-d", "region": "us-east-1"}
+		"AWS-S3": {"bucket": "name-of-bucket-d", "region": "us-east-1"}
 	},
 	"e": {
-		"AWS-S3": {"Bucket": "name-of-bucket-e", "region": "us-east-1"}
+		"AWS-S3": {"bucket": "name-of-bucket-e", "region": "us-east-1"}
 	}
 }
