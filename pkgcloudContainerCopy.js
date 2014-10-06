@@ -24,7 +24,7 @@ pcc.copyContainer = function (source, destination) {
 					// directory
 					taskList.push({file: file, action: function (file) {
 						return pcc.createDir(destination, file).then(function () {
-							process.stdout.write('created: ' + file.name + ' ' + file.size + '\n');
+							process.stdout.write('created: ' + file.name + path.sep + '\n');
 							return file;
 						});
 					}});
@@ -60,7 +60,7 @@ pcc.copyContainer = function (source, destination) {
 					// directory
 					taskList.push({file: file, action: function (file) {
 						return pcc.deleteDir(destination, file).then(function () {
-							process.stdout.write('deleted: ' + file.name + '\n');
+							process.stdout.write('deleted: ' + file.name + path.sep + '\n');
 							return file;
 						});
 					}});
@@ -124,43 +124,47 @@ pcc.transferFile = function (source, destination, file) {
 };
 
 pcc.createCloudContainerSpecifer = function (clientOption, container) {
-	if (clientOption['AWS-S3']) {
-		return new AWS.S3({
-			region: clientOption['AWS-S3'].region,
-			params: {
-				Bucket: clientOption['AWS-S3'].bucket,
-				EncodingType: 'url'
-			}
-		});
-	}
-	
 	if (container === undefined) {
 		container = clientOption.container;
 		clientOption = clientOption.client;
 	}
 	
 	var client;
-	
-	if (clientOption.download === undefined) {
+	if (clientOption.provider === 'aws-sdk') {
+		client = new AWS.S3({
+			region: clientOption.region,
+			params: {
+				Bucket: container,
+				EncodingType: 'url'
+			}
+		});
+	} else if (clientOption.provider === 'rackspace'
+		|| clientOption.provider === 'amazon'
+		|| clientOption.download === undefined
+	) {
 		client = pkgcloud.storage.createClient(clientOption);
 	} else {
 		// looks like it might be an existing client that is be suggested, use that
 		client = clientOption;
 	}
 	
-	return {
+	var containerSpecifer = {
 		client: client,
 		container: container
 	};
+	if (clientOption.meta) {
+		containerSpecifer.meta = clientOption.meta
+	}
+	return containerSpecifer;
 };
 
 pcc.getSourceStream = function (containerSpecifer, file) {
 	if (typeof containerSpecifer === 'string') {
 		// path on local file system
 		return fs.createReadStream(path.resolve(containerSpecifer, file.name));
-	} else if (containerSpecifer instanceof AWS.S3) {
+	} else if (containerSpecifer.client instanceof AWS.S3) {
 		// AWS S3
-		return containerSpecifer.getObject({Key: file.name}).createReadStream();
+		return containerSpecifer.client.getObject({Key: file.name}).createReadStream();
 	} else {
 		// pkgcloud storage container
 		var client = containerSpecifer.client;
@@ -186,11 +190,19 @@ pcc.getDestinationStream = function (containerSpecifer, file) {
 			})
 		;
 		return passThrough;
-	} else if (containerSpecifer instanceof AWS.S3) {
+	} else if (containerSpecifer.client instanceof AWS.S3) {
 		// AWS S3
 		var passThrough = new stream.PassThrough();
 		
-		containerSpecifer.putObject({Key: file.name, Body: passThrough, ContentLength: file.size}, function (err) {
+		var putParam = {Key: file.name, Body: passThrough, ContentLength: file.size};
+		
+		// use the Cache-Control meta if specified
+		if (containerSpecifer.meta && containerSpecifer.meta.all && containerSpecifer.meta.all['Cache-Control']) {
+			console.log('Cache-Control', containerSpecifer.meta.all['Cache-Control']);
+			putParam.CacheControl = containerSpecifer.meta.all['Cache-Control'];
+		}
+		
+		containerSpecifer.client.putObject(putParam, function (err) {
 			if (err) {
 				console.log('destination callback error:', err);
 			}
@@ -222,7 +234,7 @@ pcc.createDir = function (containerSpecifer, file) {
 				return file.name;
 			})
 		;
-	} else if (containerSpecifer instanceof AWS.S3) {
+	} else if (containerSpecifer.client instanceof AWS.S3) {
 		// AWS S3
 		return when.resolve(file.name); // not applicable
 	} else {
@@ -275,7 +287,7 @@ pcc.deleteDir = function (containerSpecifer, file) {
 				return file.name
 			})
 		;
-	} else if (containerSpecifer instanceof AWS.S3) {
+	} else if (containerSpecifer.client instanceof AWS.S3) {
 		// AWS S3
 		return when.resolve(file.name); // not applicable
 	} else {
@@ -292,9 +304,9 @@ pcc.deleteFile = function (containerSpecifer, file) {
 				return file.name;
 			})
 		;
-	} else if (containerSpecifer instanceof AWS.S3) {
+	} else if (containerSpecifer.client instanceof AWS.S3) {
 		// AWS S3
-		return nodefn.lift(containerSpecifer.deleteObject).bind(containerSpecifer)({Key: file.name})
+		return nodefn.lift(containerSpecifer.client.deleteObject).bind(containerSpecifer.client)({Key: file.name})
 			.then(function () {
 				return file.name;
 			})
@@ -315,9 +327,9 @@ pcc.getHostname = function (containerSpecifer) {
 	if (typeof containerSpecifer === 'string') {
 		// path on local file system
 		return null;
-	} else if (containerSpecifer instanceof AWS.S3) {
+	} else if (containerSpecifer.client instanceof AWS.S3) {
 		// AWS S3
-		return containerSpecifer.endpoint.hostname;
+		return containerSpecifer.client.endpoint.hostname;
 	} else {
 		// pkgcloud storage container
 		return containerSpecifer.client && containerSpecifer.client._serviceUrl
@@ -451,9 +463,9 @@ pcc.getFileList = function (containerSpecifer) {
 	if (typeof containerSpecifer === 'string') {
 		// path on local file system
 		return pcc.readdirRecurse(containerSpecifer);
-	} else if (containerSpecifer instanceof AWS.S3) {
+	} else if (containerSpecifer.client instanceof AWS.S3) {
 		// AWS S3
-		var p = nodefn.lift(containerSpecifer.listObjects).bind(containerSpecifer)({});
+		var p = nodefn.lift(containerSpecifer.client.listObjects).bind(containerSpecifer.client)({});
 		
 		p = p.then(function (data) {
 			return data.Contents;
