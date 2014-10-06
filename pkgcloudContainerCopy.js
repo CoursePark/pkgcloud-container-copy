@@ -199,7 +199,6 @@ pcc.getDestinationStream = function (containerSpecifer, file) {
 		
 		// use the Cache-Control meta if specified
 		if (containerSpecifer.meta && containerSpecifer.meta.all && containerSpecifer.meta.all['Cache-Control']) {
-			console.log('Cache-Control', containerSpecifer.meta.all['Cache-Control']);
 			putParam.CacheControl = containerSpecifer.meta.all['Cache-Control'];
 		}
 		
