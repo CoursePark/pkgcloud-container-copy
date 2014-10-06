@@ -29,7 +29,7 @@
 		"client": {
 			"provider": "aws-sdk",
 			"region": "us-east-1",
-			"meta": {"all": {"Cache-Control": "max-age=604800"}}
+			"meta": {"default": {"Cache-Control": "max-age=604800"}}
 		},
 		"container": "name-of-bucket-d"
 	}

@@ -198,8 +198,13 @@ pcc.getDestinationStream = function (containerSpecifer, file) {
 		var putParam = {Key: file.name, Body: passThrough, ContentLength: file.size};
 		
 		// use the Cache-Control meta if specified
-		if (containerSpecifer.meta && containerSpecifer.meta.all && containerSpecifer.meta.all['Cache-Control']) {
-			putParam.CacheControl = containerSpecifer.meta.all['Cache-Control'];
+		if (containerSpecifer.meta) {
+			var meta = containerSpecifer.meta;
+			if (meta.path && meta.path[file] && meta.path[file]['Cache-Control']) {
+				putParam.CacheControl = meta.path[file]['Cache-Control'];
+			} else if (meta.default && meta.default['Cache-Control']) {
+				putParam.CacheControl = meta.default['Cache-Control'];
+			}
 		}
 		
 		putParam.ContentType = mime.lookup(file.name) || 'application/octet-stream';
