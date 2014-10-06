@@ -1,6 +1,6 @@
 {
   "name": "pkgcloud-container-copy",
-  "version": "0.4.3",
+  "version": "0.4.5",
   "description": "Copy files or directories to or from cloud providers using the pkgcloud library",
   "keywords": [
     "Cloud",
@@ -28,6 +28,7 @@
   "dependencies": {
     "aws-sdk": "2.0.17",
     "MD5": "1.2.1",
+    "mime-types": "2.0.2",
     "mkdirp": "0.5.0",
     "pkgcloud": "0.9.6",
     "when": "3.4.6"

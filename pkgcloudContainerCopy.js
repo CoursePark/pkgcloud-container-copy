@@ -8,6 +8,7 @@ var md5 = require('MD5');
 var stream = require('stream');
 var mkdirp = require('mkdirp');
 var url = require('url');
+var mime = require('mime-types');
 
 var pcc = {};
 
@@ -201,6 +202,8 @@ pcc.getDestinationStream = function (containerSpecifer, file) {
 			console.log('Cache-Control', containerSpecifer.meta.all['Cache-Control']);
 			putParam.CacheControl = containerSpecifer.meta.all['Cache-Control'];
 		}
+		
+		putParam.ContentType = mime.lookup(file.name) || 'application/octet-stream';
 		
 		containerSpecifer.client.putObject(putParam, function (err) {
 			if (err) {
