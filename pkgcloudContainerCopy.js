@@ -13,6 +13,33 @@ var mime = require('mime-types');
 var pcc = {};
 
 pcc.copyContainer = function (source, destination) {
+	var maxAttempt = 5;
+	var attempt = 0;
+	
+	var cummulation = [];
+	
+	var unspool = function () {
+		if (attempt >= maxAttempt) {
+			return when.reject('transfer not completed, files on destination do not match the source');
+		}
+		return pcc._copyContainer(source, destination, attempt++)
+			.then(function (result) {
+				cummulation = cummulation.concat(result);
+				return when.resolve([null, result.length === 0]);
+			})
+		;
+	};
+	var predicate = function (seed) {
+		return seed;
+	};
+	return when.unfold(unspool, predicate, function () {})
+		.then(function() {
+			return cummulation;
+		})
+	;
+};
+
+pcc._copyContainer = function (source, destination, attempt) {
 	return when.join(pcc.getFileList(source), pcc.getFileList(destination))
 		.then(function (valueList) {
 			var plan = pcc.getTransferPlan(valueList[0], valueList[1]);
@@ -25,7 +52,7 @@ pcc.copyContainer = function (source, destination) {
 					// directory
 					taskList.push({file: file, action: function (file) {
 						return pcc.createDir(destination, file).then(function () {
-							process.stdout.write('created: ' + file.name + path.sep + '\n');
+							process.stdout.write('created: ' + file.name + path.sep + (attempt > 0 ? ' retry ' + attempt : '') + '\n');
 							return file;
 						});
 					}});
@@ -33,7 +60,7 @@ pcc.copyContainer = function (source, destination) {
 					// file
 					taskList.push({file: file, action: function (file) {
 						return pcc.transferFile(source, destination, file).then(function () {
-							process.stdout.write('created: ' + file.name + ' ' + file.size + '\n');
+							process.stdout.write('created: ' + file.name + ' ' + file.size + (attempt > 0 ? ' retry ' + attempt : '') + '\n');
 							return file;
 						});
 					}});
@@ -44,7 +71,7 @@ pcc.copyContainer = function (source, destination) {
 			plan.modified.forEach(function (file) {
 				taskList.push({file: file, action: function (file) {
 					return pcc.transferFile(source, destination, file).then(function () {
-						process.stdout.write('modified: ' + file.name + ' ' + file.size + '\n');
+						process.stdout.write('modified: ' + file.name + ' ' + file.size + (attempt > 0 ? ' retry ' + attempt : '') + '\n');
 						return file;
 					});
 				}});
@@ -61,7 +88,7 @@ pcc.copyContainer = function (source, destination) {
 					// directory
 					taskList.push({file: file, action: function (file) {
 						return pcc.deleteDir(destination, file).then(function () {
-							process.stdout.write('deleted: ' + file.name + path.sep + '\n');
+							process.stdout.write('deleted: ' + file.name + path.sep + (attempt > 0 ? ' retry ' + attempt : '') + '\n');
 							return file;
 						});
 					}});
@@ -69,7 +96,7 @@ pcc.copyContainer = function (source, destination) {
 					// file
 					taskList.push({file: file, action: function (file) {
 						return pcc.deleteFile(destination, file).then(function () {
-							process.stdout.write('deleted: ' + file.name + '\n');
+							process.stdout.write('deleted: ' + file.name + (attempt > 0 ? ' retry ' + attempt : '') + '\n');
 							return file;
 						});
 					}});

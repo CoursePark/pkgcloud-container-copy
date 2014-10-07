@@ -1,6 +1,6 @@
 {
   "name": "pkgcloud-container-copy",
-  "version": "0.4.8",
+  "version": "0.4.9",
   "description": "Copy files or directories to or from cloud providers using the pkgcloud library",
   "keywords": [
     "Cloud",
