@@ -33,8 +33,11 @@ pcc.copyContainer = function (source, destination) {
 		return seed;
 	};
 	return when.unfold(unspool, predicate, function () {})
-		.then(function() {
-			return cummulation;
+		.then(function () {
+			var filenameIndex = cummulation.map(function (x) {return x.name;});
+			return cummulation.filter(function (x, i) {
+				return filenameIndex.lastIndexOf(x.name) === i;
+			});
 		})
 	;
 };
@@ -166,9 +169,9 @@ pcc.createCloudContainerSpecifer = function (clientOption, container) {
 				EncodingType: 'url'
 			}
 		});
-	} else if (clientOption.provider === 'rackspace'
-		|| clientOption.provider === 'amazon'
-		|| clientOption.download === undefined
+	} else if (clientOption.provider === 'rackspace' ||
+		clientOption.provider === 'amazon' ||
+		clientOption.download === undefined
 	) {
 		client = pkgcloud.storage.createClient(clientOption);
 	} else {
@@ -181,7 +184,7 @@ pcc.createCloudContainerSpecifer = function (clientOption, container) {
 		container: container
 	};
 	if (clientOption.meta) {
-		containerSpecifer.meta = clientOption.meta
+		containerSpecifer.meta = clientOption.meta;
 	}
 	return containerSpecifer;
 };
@@ -206,10 +209,10 @@ pcc.getSourceStream = function (containerSpecifer, file) {
 };
 
 pcc.getDestinationStream = function (containerSpecifer, file) {
+	// need a placeholder stream because the writer stream is going to be
+	// available until the directory is created
+	var passThrough = new stream.PassThrough();
 	if (typeof containerSpecifer === 'string') {
-		// need a placeholder stream because the writer stream is going to be
-		// available until the directory is created
-		var passThrough = new stream.PassThrough();
 		// path on local file system
 		var filePath = path.resolve(containerSpecifer, file.name);
 		nodefn.lift(mkdirp)(path.dirname(filePath))
@@ -220,8 +223,6 @@ pcc.getDestinationStream = function (containerSpecifer, file) {
 		return passThrough;
 	} else if (containerSpecifer.client instanceof AWS.S3) {
 		// AWS S3
-		var passThrough = new stream.PassThrough();
-		
 		var putParam = {Key: file.name, Body: passThrough, ContentLength: file.size};
 		
 		// use the Cache-Control meta if specified
@@ -245,8 +246,6 @@ pcc.getDestinationStream = function (containerSpecifer, file) {
 		return passThrough;
 	} else {
 		// pkgcloud storage container
-		var passThrough = new stream.PassThrough();
-		
 		var client = containerSpecifer.client;
 		var container = containerSpecifer.container;
 		var clientStream = client.upload({container: container, remote: file.name}, function (err) {
@@ -318,7 +317,7 @@ pcc.deleteDir = function (containerSpecifer, file) {
 		};
 		return when.unfold(unspool, predicate, function () {})
 			.then(function() {
-				return file.name
+				return file.name;
 			})
 		;
 	} else if (containerSpecifer.client instanceof AWS.S3) {
@@ -366,9 +365,8 @@ pcc.getHostname = function (containerSpecifer) {
 		return containerSpecifer.client.endpoint.hostname;
 	} else {
 		// pkgcloud storage container
-		return containerSpecifer.client && containerSpecifer.client._serviceUrl
-			? url.parse(containerSpecifer.client._serviceUrl).hostname
-			: null
+		return containerSpecifer.client && containerSpecifer.client._serviceUrl ?
+			url.parse(containerSpecifer.client._serviceUrl).hostname : null
 		;
 	}
 };
@@ -494,12 +492,14 @@ pcc.readdirRecurse = function (dir) {
 };
 
 pcc.getFileList = function (containerSpecifer) {
+	var p;
+	
 	if (typeof containerSpecifer === 'string') {
 		// path on local file system
 		return pcc.readdirRecurse(containerSpecifer);
 	} else if (containerSpecifer.client instanceof AWS.S3) {
 		// AWS S3
-		var p = nodefn.lift(containerSpecifer.client.listObjects).bind(containerSpecifer.client)({});
+		p = nodefn.lift(containerSpecifer.client.listObjects).bind(containerSpecifer.client)({});
 		
 		p = p.then(function (data) {
 			return data.Contents;
@@ -515,7 +515,7 @@ pcc.getFileList = function (containerSpecifer) {
 		var client = containerSpecifer.client;
 		var container = containerSpecifer.container;
 		
-		var p = nodefn.lift(client.getFiles).bind(client)(container)
+		p = nodefn.lift(client.getFiles).bind(client)(container)
 			.catch(function (err) {
 				console.log('get file list error:', err);
 			})
@@ -530,9 +530,8 @@ pcc.getFileList = function (containerSpecifer) {
 };
 
 pcc.cloudFileModel = function (fullModel) {
-	var etag = (fullModel.etag || fullModel.ETag)
-		? (fullModel.etag || fullModel.ETag.replace('"', '').replace('"', ''))
-		: null
+	var etag = (fullModel.etag || fullModel.ETag) ?
+		(fullModel.etag || fullModel.ETag.replace('"', '').replace('"', '')) : null
 	;
 	return {
 		name: fullModel.name || fullModel.Key,
