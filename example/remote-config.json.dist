@@ -36,6 +36,7 @@
 				}
 			}
 		},
-		"container": "name-of-bucket-d"
+		"container": "name-of-bucket-d",
+		"namePrefix": "directory-in-bucket-to-copy-from-or-to-ending-in/"
 	}
 }
