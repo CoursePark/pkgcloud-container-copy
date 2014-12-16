@@ -24,6 +24,9 @@ pcc.copyContainer = function (source, destination) {
 		}
 		return pcc._copyContainer(source, destination, attempt++)
 			.then(function (result) {
+				return when.filter(function (x) {return x !== null;}, result);
+			})
+			.then(function (result) {
 				cummulation = cummulation.concat(result);
 				return when.resolve([null, result.length === 0]);
 			})
@@ -65,16 +68,20 @@ pcc._copyContainer = function (source, destination, attempt) {
 				if (file.isDir) {
 					// directory
 					taskList.push({file: file, action: function (file) {
-						return pcc.createDir(destination, file).then(function () {
-							process.stdout.write('created: ' + file.name + path.sep + (attempt > 0 ? ' retry ' + attempt : '') + '\n');
+						return pcc.createDir(destination, file).then(function (file) {
+							if (file) {
+								process.stdout.write('created: ' + file.name + path.sep + (attempt > 0 ? ' retry ' + attempt : '') + '\n');
+							}
 							return file;
 						});
 					}});
 				} else {
 					// file
 					taskList.push({file: file, action: function (file) {
-						return pcc.transferFile(source, destination, file).then(function () {
-							process.stdout.write('created: ' + file.name + ' ' + file.size + (attempt > 0 ? ' retry ' + attempt : '') + '\n');
+						return pcc.transferFile(source, destination, file).then(function (file) {
+							if (file) {
+								process.stdout.write('created: ' + file.name + ' ' + file.size + (attempt > 0 ? ' retry ' + attempt : '') + '\n');
+							}
 							return file;
 						});
 					}});
@@ -84,8 +91,10 @@ pcc._copyContainer = function (source, destination, attempt) {
 			// modified
 			plan.modified.forEach(function (file) {
 				taskList.push({file: file, action: function (file) {
-					return pcc.transferFile(source, destination, file).then(function () {
-						process.stdout.write('modified: ' + file.name + ' ' + file.size + (attempt > 0 ? ' retry ' + attempt : '') + '\n');
+					return pcc.transferFile(source, destination, file).then(function (file) {
+						if (file) {
+							process.stdout.write('modified: ' + file.name + ' ' + file.size + (attempt > 0 ? ' retry ' + attempt : '') + '\n');
+						}
 						return file;
 					});
 				}});
@@ -101,16 +110,20 @@ pcc._copyContainer = function (source, destination, attempt) {
 				if (file.isDir) {
 					// directory
 					taskList.push({file: file, action: function (file) {
-						return pcc.deleteDir(destination, file).then(function () {
-							process.stdout.write('deleted: ' + file.name + path.sep + (attempt > 0 ? ' retry ' + attempt : '') + '\n');
+						return pcc.deleteDir(destination, file).then(function (file) {
+							if (file) {
+								process.stdout.write('deleted: ' + file.name + path.sep + (attempt > 0 ? ' retry ' + attempt : '') + '\n');
+							}
 							return file;
 						});
 					}});
 				} else {
 					// file
 					taskList.push({file: file, action: function (file) {
-						return pcc.deleteFile(destination, file).then(function () {
-							process.stdout.write('deleted: ' + file.name + (attempt > 0 ? ' retry ' + attempt : '') + '\n');
+						return pcc.deleteFile(destination, file).then(function (file) {
+							if (file) {
+								process.stdout.write('deleted: ' + file.name + (attempt > 0 ? ' retry ' + attempt : '') + '\n');
+							}
 							return file;
 						});
 					}});
@@ -148,11 +161,11 @@ pcc.transferFile = function (source, destination, file) {
 		sourceStream.pipe(destinationStream);
 		
 		destinationStream.on('finish', function () {
-			resolve(file.name);
+			resolve(file);
 		});
 		// 'end' event because of old streams used in request package, which is used by pkgcloud upload
 		destinationStream.on('end', function () {
-			resolve(file.name);
+			resolve(file);
 		});
 		destinationStream.on('error', function (err) {
 			console.log('destination error:', file.name);
@@ -199,8 +212,13 @@ pcc.createCloudContainerSpecifer = function (clientOption, container, namePrefix
 	var containerSpecifer = {
 		client: client,
 		container: container,
-		namePrefix: namePrefix
+		namePrefix: namePrefix,
+		delete: {
+			// default to true if not delete.enabled is not specified
+			enabled: !clientOption.delete || clientOption.delete.enabled === undefined || clientOption.delete.enabled
+		}
 	};
+	
 	if (clientOption.meta) {
 		containerSpecifer.meta = clientOption.meta;
 	}
@@ -282,15 +300,15 @@ pcc.createDir = function (containerSpecifer, file) {
 		// path on local file system
 		return nodefn.lift(mkdirp)(path.resolve(containerSpecifer, file.name))
 			.then(function () {
-				return file.name;
+				return file;
 			})
 		;
 	} else if (containerSpecifer.client instanceof AWS.S3) {
 		// AWS S3
-		return when.resolve(file.name); // not applicable
+		return when.resolve(file); // not applicable
 	} else {
 		// pkgcloud storage container
-		return when.resolve(file.name); // not applicable
+		return when.resolve(file); // not applicable
 	}
 };
 
@@ -335,15 +353,21 @@ pcc.deleteDir = function (containerSpecifer, file) {
 		};
 		return when.unfold(unspool, predicate, function () {})
 			.then(function() {
-				return file.name;
+				return file;
 			})
 		;
-	} else if (containerSpecifer.client instanceof AWS.S3) {
+	}
+	
+	if (!containerSpecifer.delete.enabled) {
+		return when.resolve(null);
+	}
+	
+	if (containerSpecifer.client instanceof AWS.S3) {
 		// AWS S3
-		return when.resolve(file.name); // not applicable
+		return when.resolve(file); // not applicable
 	} else {
 		// pkgcloud storage container
-		return when.resolve(file.name); // not applicable
+		return when.resolve(file); // not applicable
 	}
 };
 
@@ -352,14 +376,20 @@ pcc.deleteFile = function (containerSpecifer, file) {
 		// path on local file system
 		return nodefn.lift(fs.unlink).bind(fs)(path.resolve(containerSpecifer, file.name))
 			.then(function () {
-				return file.name;
+				return file;
 			})
 		;
-	} else if (containerSpecifer.client instanceof AWS.S3) {
+	}
+	
+	if (!containerSpecifer.delete.enabled) {
+		return when.resolve(null);
+	}
+	
+	if (containerSpecifer.client instanceof AWS.S3) {
 		// AWS S3
 		return nodefn.lift(containerSpecifer.client.deleteObject).bind(containerSpecifer.client)({Key: containerSpecifer.namePrefix + file.name})
 			.then(function () {
-				return file.name;
+				return file;
 			})
 		;
 	} else {
@@ -368,7 +398,7 @@ pcc.deleteFile = function (containerSpecifer, file) {
 		var container = containerSpecifer.container;
 		return nodefn.lift(client.removeFile).bind(client)(container, file.name)
 			.then(function () {
-				return file.name;
+				return file;
 			})
 		;
 	}
