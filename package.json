@@ -1,6 +1,6 @@
 {
   "name": "pkgcloud-container-copy",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Copy files or directories to or from cloud providers using the pkgcloud library",
   "keywords": [
     "Cloud",
@@ -26,15 +26,15 @@
     "url": "git@github.com:CoursePark/pkgcloud-container-copy.git"
   },
   "dependencies": {
-    "aws-sdk": "2.0.17",
-    "MD5": "1.2.1",
-    "mime-types": "2.0.2",
-    "mkdirp": "0.5.0",
-    "pkgcloud": "0.9.6",
-    "when": "3.4.6"
+    "aws-sdk": "^2.0.17",
+    "MD5": "^1.2.1",
+    "mime-types": "^2.0.2",
+    "mkdirp": "^0.5.0",
+    "pkgcloud": "^0.9.6",
+    "when": "^3.4.6"
   },
   "devDependencies": {
-    "jshint": "2.5.6"
+    "jshint": "^2.5.6"
   },
   "author": "Bluedrop Peformance Learning"
 }
