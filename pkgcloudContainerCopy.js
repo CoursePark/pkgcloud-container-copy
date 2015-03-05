@@ -259,17 +259,45 @@ pcc.getDestinationStream = function (containerSpecifer, file) {
 		return passThrough;
 	} else if (containerSpecifer.client instanceof AWS.S3) {
 		// AWS S3
-		var putParam = {Key: containerSpecifer.namePrefix + file.name, Body: passThrough, ContentLength: file.size};
+		var putParam = {};
 		
 		// use the Cache-Control meta if specified
 		if (containerSpecifer.meta) {
+			var awsMetaMap = {
+				'Cache-Control': 'CacheControl',
+				'Content-Encoding': 'ContentEncoding'
+			};
+			
 			var meta = containerSpecifer.meta;
-			if (meta.path && meta.path[file.name] && meta.path[file.name]['Cache-Control']) {
-				putParam.CacheControl = meta.path[file.name]['Cache-Control'];
-			} else if (meta.default && meta.default['Cache-Control']) {
-				putParam.CacheControl = meta.default['Cache-Control'];
+			
+			if (meta.path && meta.default) {
+				for (var prop in meta.default) {
+					if (meta.default.hasOwnProperty(prop)) {
+						if (awsMetaMap[prop]) {
+							putParam[awsMetaMap[prop]] = meta.default[prop];
+						} else {
+							putParam[prop] = meta.default[prop];
+						}
+					}
+				}
+			}
+			
+			if (meta.path && meta.path[file.name]) {
+				for (var prop in meta.path[file.name]) {
+					if (meta.path[file.name].hasOwnProperty(prop)) {
+						if (awsMetaMap[prop]) {
+							putParam[awsMetaMap[prop]] = meta.path[file.name][prop];
+						} else {
+							putParam[prop] = meta.path[file.name][prop];
+						}
+					}
+				}
 			}
 		}
+		
+		putParam.Key = containerSpecifer.namePrefix + file.name;
+		putParam.Body = passThrough;
+		putParam.ContentLength = file.size;
 		
 		putParam.ContentType = mime.lookup(file.name) || 'application/octet-stream';
 		
