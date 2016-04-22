@@ -163,8 +163,8 @@ pcc.transferFile = function (source, destination, file) {
 		destinationStream.on('finish', function () {
 			resolve(file);
 		});
-		// 'end' event because of old streams used in request package, which is used by pkgcloud upload
-		destinationStream.on('end', function () {
+		// 'success' event is issued by the pkgcloud upload
+		destinationStream.on('success', function () {
 			resolve(file);
 		});
 		destinationStream.on('error', function (err) {
